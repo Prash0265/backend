@@ -21,6 +21,24 @@ const User = mongoose.model('User', {
   dob: Date,
   location: String,
   bio: String,
+  reviews: [
+    {
+      rating: Number, // Rating out of 5
+      comment: String,
+      createdBy: String, // The username of the user who created the review
+    },
+  ],
+});
+const Review = mongoose.model('Review', {
+  productId: String,
+  rating: Number,
+  comment: String,
+  createdBy: String,
+});
+const Bid = mongoose.model('Bid', {
+  productId: String,
+  username: String,
+  price: Number,
 });
 
 app.post('/signup', async (req, res) => {
@@ -75,6 +93,76 @@ app.post('/payment-sheet', async (req, res) => {
   });
 });
 
+app.get('/reviews/:productId', async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const reviews = await Review.find({ productId });
+    console.log('product id:',productId);
+    console.log('review:',reviews);
+    res.json(reviews);
+  } catch (error) {
+    console.error('Error fetching reviews:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.post('/add-review', async (req, res) => {
+  try {
+    const { username, productId, rating, comment } = req.body;
+
+    // Find the user by username
+    const user = await User.findOne({ username });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check if the user has already reviewed the product
+    const existingReview = user.reviews.find((review) => review.productId === productId);
+
+    if (existingReview) {
+      return res.status(400).json({ error: 'You have already reviewed this product' });
+    }
+
+    // Save the new review to the Review collection
+    const newReview = new Review({ productId, rating, comment, createdBy: username });
+    await newReview.save();
+
+    // Add the review reference to the user's reviews array
+    user.reviews.push(newReview);
+    await user.save();
+
+    res.status(201).json({ message: 'Review added successfully' });
+  } catch (error) {
+    console.error('Error adding review:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.get('/bids/:productId', async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const bids = await Bid.find({ productId });
+    res.json(bids);
+  } catch (error) {
+    console.error('Error fetching bids:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Express route to add a new bid
+app.post('/add-bid', async (req, res) => {
+  try {
+    const { productId, username, price } = req.body;
+    const newBid = new Bid({ productId, username, price });
+    await newBid.save();
+    res.status(201).json({ message: 'Bid added successfully' });
+  } catch (error) {
+    console.error('Error adding bid:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
+
