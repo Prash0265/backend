@@ -1,3 +1,4 @@
+// Server.js
 const express = require('express');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
@@ -23,22 +24,34 @@ const User = mongoose.model('User', {
   bio: String,
   reviews: [
     {
-      rating: Number, // Rating out of 5
+      rating: Number,
       comment: String,
-      createdBy: String, // The username of the user who created the review
+      createdBy: String,
     },
   ],
 });
+
 const Review = mongoose.model('Review', {
   productId: String,
   rating: Number,
   comment: String,
   createdBy: String,
 });
+
 const Bid = mongoose.model('Bid', {
   productId: String,
   username: String,
   price: Number,
+});
+
+const Request = mongoose.model('Request', {
+  productId: String,
+  username: String,
+  material: String,
+  size: String,
+  color: String,
+  style: String,
+  additionalDetails: String,
 });
 
 app.post('/signup', async (req, res) => {
@@ -69,36 +82,37 @@ app.post('/login', async (req, res) => {
 });
 
 app.post('/payment-sheet', async (req, res) => {
-  // Use an existing Customer ID if this is a returning customer.
-  const customer = await stripe.customers.create();
-  const ephemeralKey = await stripe.ephemeralKeys.create(
-    {customer: customer.id},
-    {apiVersion: '2023-10-16'}
-  );
-  const paymentIntent = await stripe.paymentIntents.create({
-    amount: 1099,
-    currency: 'eur',
-    customer: customer.id,
-    // In the latest version of the API, specifying the `automatic_payment_methods` parameter is optional because Stripe enables its functionality by default.
-    automatic_payment_methods: {
-      enabled: true,
-    },
-  });
+  try {
+    const customer = await stripe.customers.create();
+    const ephemeralKey = await stripe.ephemeralKeys.create(
+      {customer: customer.id},
+      {apiVersion: '2023-10-16'}
+    );
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: 1099,
+      currency: 'eur',
+      customer: customer.id,
+      automatic_payment_methods: {
+        enabled: true,
+      },
+    });
 
-  res.json({
-    paymentIntent: paymentIntent.client_secret,
-    ephemeralKey: ephemeralKey.secret,
-    customer: customer.id,
-    publishableKey: 'pk_test_51OKVqaHWdYWtkALO6ghTEGviBJWi25YqqKHSvgphCk7TDhRTm1kO8WM19yoLzXzOi2acpuRBfqLcOHVBePA0uf3d0024wSYJDl'
-  });
+    res.json({
+      paymentIntent: paymentIntent.client_secret,
+      ephemeralKey: ephemeralKey.secret,
+      customer: customer.id,
+      publishableKey: 'pk_test_51OKVqaHWdYWtkALO6ghTEGviBJWi25YqqKHSvgphCk7TDhRTm1kO8WM19yoLzXzOi2acpuRBfqLcOHVBePA0uf3d0024wSYJDl'
+    });
+  } catch (error) {
+    console.error('Error creating payment sheet:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 });
 
 app.get('/reviews/:productId', async (req, res) => {
   try {
     const { productId } = req.params;
     const reviews = await Review.find({ productId });
-    console.log('product id:',productId);
-    console.log('review:',reviews);
     res.json(reviews);
   } catch (error) {
     console.error('Error fetching reviews:', error);
@@ -110,25 +124,21 @@ app.post('/add-review', async (req, res) => {
   try {
     const { username, productId, rating, comment } = req.body;
 
-    // Find the user by username
     const user = await User.findOne({ username });
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Check if the user has already reviewed the product
     const existingReview = user.reviews.find((review) => review.productId === productId);
 
     if (existingReview) {
       return res.status(400).json({ error: 'You have already reviewed this product' });
     }
 
-    // Save the new review to the Review collection
     const newReview = new Review({ productId, rating, comment, createdBy: username });
     await newReview.save();
 
-    // Add the review reference to the user's reviews array
     user.reviews.push(newReview);
     await user.save();
 
@@ -150,7 +160,6 @@ app.get('/bids/:productId', async (req, res) => {
   }
 });
 
-// Express route to add a new bid
 app.post('/add-bid', async (req, res) => {
   try {
     const { productId, username, price } = req.body;
@@ -162,7 +171,30 @@ app.post('/add-bid', async (req, res) => {
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
+
+app.get('/requests/:productId', async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const requests = await Request.find({ productId });
+    res.json(requests);
+  } catch (error) {
+    console.error('Error fetching requests:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.post('/add-request', async (req, res) => {
+  try {
+    const { productId, username, material, size, color, style, additionalDetails } = req.body;
+    const newRequest = new Request({ productId, username, material, size, color, style, additionalDetails });
+    await newRequest.save();
+    res.status(201).json({ message: 'Request added successfully' });
+  } catch (error) {
+    console.error('Error adding request:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
-
